@@ -2,14 +2,18 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Portal : MonoBehaviour
+public class Portal : MonoBehaviour, CollisionHandler
 {
+    private const float ANTI_CLIP_OFFSET = 0.05f;
     private const float NEAR_CLIP_OFFSET = 0.05f;
     private const float NEAR_CLIP_LIMIT = 0.05f;
 
     [Header("Portal")]
     [SerializeField] private Portal _linkedPortal = null;
     [SerializeField] private MeshRenderer _portalScreen = null;
+    [SerializeField] private Collider _physZoneA = null;
+    [SerializeField] private Collider _physZoneB = null;
+    [SerializeField] private Collider _portalZone = null;
 
     // Render
     private RenderTexture _viewTexture;
@@ -17,15 +21,15 @@ public class Portal : MonoBehaviour
     private Camera _playerCamera;
 
     // Travellers
-    private List<PortalTraveller> _teleportingTravellers;
+    private List<PortalTraveller> _trackedTravellers;
 
-    //////////////////////////////////////////////////////////////////////
-    void Awake()
+	//////////////////////////////////////////////////////////////////////
+	void Awake()
     {
         _portalCamera = GetComponentInChildren<Camera>();
         _playerCamera = Camera.main;
-        _teleportingTravellers = new List<PortalTraveller>();
-    }
+        _trackedTravellers = new List<PortalTraveller>();
+	}
 
     //////////////////////////////////////////////////////////////////////
     void Start()
@@ -40,7 +44,56 @@ public class Portal : MonoBehaviour
     }
 
     //////////////////////////////////////////////////////////////////////
-    public void OnPreRenderView()
+    public void OnEnterTrigger(Collider localCollider, Collider externalCollider)
+    {
+        PortalTraveller traveller = externalCollider.GetComponentInParent<PortalTraveller>();
+        if (!traveller || traveller.TravellerCollider != externalCollider)
+        {
+            return;
+        }
+
+        if (localCollider == _physZoneA)
+        {
+            traveller.OnApproachPortalZone(this, GlobalVars.Instance._layerPortalSideA, GlobalVars.Instance._layerPortalSideB);
+        }
+        else if (localCollider == _physZoneB)
+        {
+            traveller.OnApproachPortalZone(this, GlobalVars.Instance._layerPortalSideB, GlobalVars.Instance._layerPortalSideA);
+        }
+		else if (localCollider == _portalZone)
+		{
+            traveller.OnEnterPortal();
+        }
+	}
+
+	//////////////////////////////////////////////////////////////////////
+	public void OnExitTrigger(Collider localCollider, Collider externalCollider)
+	{
+		PortalTraveller traveller = externalCollider.GetComponentInParent<PortalTraveller>();
+		if (!traveller || traveller.TravellerCollider != externalCollider)
+		{
+			return;
+		}
+
+		if (localCollider == _physZoneA)
+		{
+            traveller.OnLeavePortalZone(this);
+        }
+		else if (localCollider == _physZoneB)
+		{
+            traveller.OnLeavePortalZone(this);
+        }
+		else if (localCollider == _portalZone)
+		{
+            if (_trackedTravellers.Contains(traveller))
+            {
+                traveller.OnExitPortal();
+            }
+        }
+	}
+
+	//////////////////////////////////////////////////////////////////////
+	public void OnPreRenderView()
     {
         UpdateTravellersSlice();
     }
@@ -79,48 +132,51 @@ public class Portal : MonoBehaviour
     }
 
     //////////////////////////////////////////////////////////////////////
-    public void OnTravellerEnterPortal(PortalTraveller traveller)
+    public void OnTravellerApprochingPortal(PortalTraveller traveller)
     {
-        if (!_teleportingTravellers.Contains(traveller))
+        if (!_trackedTravellers.Contains(traveller))
         {
-            _teleportingTravellers.Add(traveller);
+            _trackedTravellers.Add(traveller);
         }
     }
 
     //////////////////////////////////////////////////////////////////////
-    public void OnTravellerExitPortal(PortalTraveller traveller)
+    public void OnTravellerLeavingPortal(PortalTraveller traveller)
     {
-        _teleportingTravellers.Remove(traveller);
+        _trackedTravellers.Remove(traveller);
     }
 
     //////////////////////////////////////////////////////////////////////
     private void UpdateTravellersSlice()
     {
-        foreach (PortalTraveller traveller in _teleportingTravellers)
+        foreach (PortalTraveller traveller in _trackedTravellers)
         {
-            PortalTraveller.SliceParameters travellerSliceParams = new PortalTraveller.SliceParameters();
-            PortalTraveller.SliceParameters cloneSliceParams = new PortalTraveller.SliceParameters();
-
-            travellerSliceParams._slicePosition = transform.position;
-            cloneSliceParams._slicePosition = _linkedPortal.transform.position;
-
-            float travellerSideOfPortal = GetSideOfPortal(traveller.transform.position);
-            travellerSliceParams._sliceNormal = transform.forward * -travellerSideOfPortal;
-            cloneSliceParams._sliceNormal = _linkedPortal.transform.forward * travellerSideOfPortal;
-
-            travellerSliceParams._sliceOffsetDist = 0;
-            if (GetSideOfPortal(_playerCamera.transform.position) != GetSideOfPortal(traveller.transform.position))
+            if (traveller.IsInPortal)
             {
-                travellerSliceParams._sliceOffsetDist = -_portalScreen.transform.localScale.z;
-            }
+                PortalTraveller.SliceParameters travellerSliceParams = new PortalTraveller.SliceParameters();
+                PortalTraveller.SliceParameters cloneSliceParams = new PortalTraveller.SliceParameters();
 
-            cloneSliceParams._sliceOffsetDist = 0;
-            if (_linkedPortal.GetSideOfPortal(_playerCamera.transform.position) == GetSideOfPortal(traveller.transform.position))
-            {
-                cloneSliceParams._sliceOffsetDist = -_portalScreen.transform.localScale.z;
-            }
+                travellerSliceParams._slicePosition = transform.position;
+                cloneSliceParams._slicePosition = _linkedPortal.transform.position;
 
-            traveller.UpdateMaterialsSlice(travellerSliceParams, cloneSliceParams);
+                float travellerSideOfPortal = GetSideOfPortal(traveller.transform.position);
+                travellerSliceParams._sliceNormal = transform.forward * -travellerSideOfPortal;
+                cloneSliceParams._sliceNormal = _linkedPortal.transform.forward * travellerSideOfPortal;
+
+                travellerSliceParams._sliceOffsetDist = 0;
+                if (GetSideOfPortal(_playerCamera.transform.position) != GetSideOfPortal(traveller.transform.position))
+                {
+                    travellerSliceParams._sliceOffsetDist = -(_portalScreen.transform.localScale.z + ANTI_CLIP_OFFSET);
+                }
+
+                cloneSliceParams._sliceOffsetDist = 0;
+                if (_linkedPortal.GetSideOfPortal(_playerCamera.transform.position) == GetSideOfPortal(traveller.transform.position))
+				{
+					cloneSliceParams._sliceOffsetDist = -(_portalScreen.transform.localScale.z + ANTI_CLIP_OFFSET);
+                }
+
+                traveller.UpdateMaterialsSlice(travellerSliceParams, cloneSliceParams);
+            }
         }
     }
 
@@ -158,21 +214,23 @@ public class Portal : MonoBehaviour
     //////////////////////////////////////////////////////////////////////
     private void UpdateTravellers()
     {
-        for (int i = _teleportingTravellers.Count - 1; i >= 0; --i)
+        for (int i = _trackedTravellers.Count - 1; i >= 0; --i)
         {
-            PortalTraveller portalTraveller = _teleportingTravellers[i];
-
-            Matrix4x4 relativeMat = _linkedPortal.transform.localToWorldMatrix * transform.worldToLocalMatrix * portalTraveller.transform.localToWorldMatrix;
-            if (portalTraveller.HasCrossedPortal(this))
+            PortalTraveller traveller = _trackedTravellers[i];
+            if (traveller.IsInPortal)
             {
-                portalTraveller.Teleport(relativeMat.GetColumn(3), relativeMat.rotation);
+                Matrix4x4 relativeMat = _linkedPortal.transform.localToWorldMatrix * transform.worldToLocalMatrix * traveller.transform.localToWorldMatrix;
+                if (traveller.HasCrossedPortal(this))
+				{
+					traveller.Teleport(relativeMat.GetColumn(3), relativeMat.rotation);
 
-                _linkedPortal.OnTravellerEnterPortal(portalTraveller);
-                _teleportingTravellers.RemoveAt(i);
-            }
-            else
-            {
-                portalTraveller.UpdateClone(relativeMat.GetColumn(3), relativeMat.rotation);
+                    _linkedPortal.OnTravellerApprochingPortal(traveller);
+                    OnTravellerLeavingPortal(traveller);
+                }
+                else
+                {
+                    traveller.UpdateClone(relativeMat.GetColumn(3), relativeMat.rotation);
+                }
             }
         }
     }
@@ -224,21 +282,27 @@ public class Portal : MonoBehaviour
         float portalCamSide = GetSideOfPortal(_portalCamera.transform.position);
         float linkedPortalCamSide = _linkedPortal.GetSideOfPortal(_portalCamera.transform.position);
 
-        foreach (PortalTraveller traveller in _teleportingTravellers)
+        foreach (PortalTraveller traveller in _trackedTravellers)
         {
-            float travellerSide = GetSideOfPortal(traveller.transform.position);
-            traveller.OverrideSliceOffsetDist((travellerSide == portalCamSide) ? -OFFSET_DIST : OFFSET_DIST, false);
+            if (traveller.IsInPortal)
+            {
+                float travellerSide = GetSideOfPortal(traveller.transform.position);
+                traveller.OverrideSliceOffsetDist((travellerSide == portalCamSide) ? -OFFSET_DIST : OFFSET_DIST, false);
 
-            float cloneSide = -travellerSide;
-            traveller.OverrideSliceOffsetDist((cloneSide == linkedPortalCamSide) ? screenThickness : -screenThickness, true);
+                float cloneSide = -travellerSide;
+                traveller.OverrideSliceOffsetDist((cloneSide == linkedPortalCamSide) ? (screenThickness + ANTI_CLIP_OFFSET) : -(screenThickness + ANTI_CLIP_OFFSET), true);
+            }
         }
 
-		foreach (PortalTraveller linkedTraveller in _linkedPortal._teleportingTravellers)
+		foreach (PortalTraveller linkedTraveller in _linkedPortal._trackedTravellers)
 		{
-			float travellerSide = _linkedPortal.GetSideOfPortal(linkedTraveller.transform.position);
-            linkedTraveller.OverrideSliceOffsetDist((travellerSide != portalCamSide) ? -OFFSET_DIST : OFFSET_DIST, true);
+            if (linkedTraveller.IsInPortal)
+            {
+                float travellerSide = _linkedPortal.GetSideOfPortal(linkedTraveller.transform.position);
+                linkedTraveller.OverrideSliceOffsetDist((travellerSide != portalCamSide) ? -OFFSET_DIST : OFFSET_DIST, true);
 
-            linkedTraveller.OverrideSliceOffsetDist(((travellerSide == linkedPortalCamSide)) ? screenThickness : -screenThickness, false);
+                linkedTraveller.OverrideSliceOffsetDist(((travellerSide == linkedPortalCamSide)) ? (screenThickness + ANTI_CLIP_OFFSET) : -(screenThickness + ANTI_CLIP_OFFSET), false);
+            }
 		}
 	}
 }

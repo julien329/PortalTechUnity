@@ -79,12 +79,15 @@ public class PlayerController : PortalTraveller
 		RaycastHit hitInfo1;
 		if (Physics.SphereCast(transform.position + Vector3.up * (_groundCheckRadius - (_controller.height / 2f)), _groundCheckRadius, Vector3.down, out hitInfo1, _groundCheckRadius, _groundLayerMask))
 		{
-			_distToGround = (_controller.ClosestPoint(hitInfo1.point) - hitInfo1.point).magnitude;
+			if (!Physics.GetIgnoreLayerCollision(gameObject.layer, hitInfo1.collider.gameObject.layer))
+			{ 
+				_distToGround = (_controller.ClosestPoint(hitInfo1.point) - hitInfo1.point).magnitude;
 
-			float slopeAngle = Vector3.Angle(Vector3.up, hitInfo1.normal);
-			if (slopeAngle <= _controller.slopeLimit)
-			{
-				_groundNormal = hitInfo1.normal;
+				float slopeAngle = Vector3.Angle(Vector3.up, hitInfo1.normal);
+				if (slopeAngle <= _controller.slopeLimit)
+				{
+					_groundNormal = hitInfo1.normal;
+				}
 			}
 		}
 
