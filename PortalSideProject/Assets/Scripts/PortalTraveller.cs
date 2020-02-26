@@ -124,7 +124,7 @@ public class PortalTraveller : MonoBehaviour
         UpdateClone(oldPos, oldRot);
 
 		int travellerLayer = (gameObject.layer == GlobalVars.Instance._layerPortalSideA_Exclusive) ? GlobalVars.Instance._layerPortalSideB_Exclusive : GlobalVars.Instance._layerPortalSideA_Exclusive;
-		int cloneLayer = (gameObject.layer == GlobalVars.Instance._layerPortalSideA_Exclusive) ? GlobalVars.Instance._layerPortalSideB_Exclusive : GlobalVars.Instance._layerPortalSideA_Exclusive;
+		int cloneLayer = (gameObject.layer == GlobalVars.Instance._layerPortalSideA_Exclusive) ? GlobalVars.Instance._layerPortalSideA_Exclusive : GlobalVars.Instance._layerPortalSideB_Exclusive;
 		SetNewPhysLayer(travellerLayer, cloneLayer);
 
 		Physics.SyncTransforms();

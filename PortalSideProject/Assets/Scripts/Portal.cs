@@ -4,6 +4,7 @@ using UnityEngine;
 
 public class Portal : MonoBehaviour, CollisionHandler
 {
+    private const int MAX_NB_RECURSION = 10;
     private const float ANTI_CLIP_OFFSET = 0.05f;
     private const float NEAR_CLIP_OFFSET = 0.05f;
     private const float NEAR_CLIP_LIMIT = 0.05f;
@@ -101,21 +102,26 @@ public class Portal : MonoBehaviour, CollisionHandler
     //////////////////////////////////////////////////////////////////////
     public void RenderView()
     {
-        if (!IsVisibleFromCamera(_playerCamera))
+        CreateViewTexture();
+
+        List<Matrix4x4> camerasTransform = new List<Matrix4x4>();
+        GetCamerasTransform(ref camerasTransform);
+
+		_portalScreen.enabled = false;
+
+        for (int i = camerasTransform.Count - 1; i >= 0; --i)
         {
-            return;
+            _linkedPortal._portalScreen.enabled = (i != camerasTransform.Count - 1);
+
+            _portalCamera.transform.SetPositionAndRotation(camerasTransform[i].GetColumn(3), camerasTransform[i].rotation);
+
+            UpdateNearClipPlane();
+            AvoidClipping();
+            _portalCamera.Render();
         }
 
-        _portalScreen.enabled = false;
-
-        CreateViewTexture();
-        MoveCameraToPosition();
-
-        UpdateNearClipPlane();
-        AvoidClipping();
-        _portalCamera.Render();
-
         _portalScreen.enabled = true;
+        _linkedPortal._portalScreen.enabled = true;
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -181,10 +187,23 @@ public class Portal : MonoBehaviour, CollisionHandler
     }
 
     //////////////////////////////////////////////////////////////////////
-    private void MoveCameraToPosition()
+    private void GetCamerasTransform(ref List<Matrix4x4> camerasTransform)
     {
-        Matrix4x4 relativeMat = transform.localToWorldMatrix * _linkedPortal.transform.worldToLocalMatrix * _playerCamera.transform.localToWorldMatrix;
-        _portalCamera.transform.SetPositionAndRotation(relativeMat.GetColumn(3), relativeMat.rotation);
+        _portalCamera.projectionMatrix = _playerCamera.projectionMatrix;
+
+        Matrix4x4 localToWorldMat = _playerCamera.transform.localToWorldMatrix;
+        for (int i = 0; i < MAX_NB_RECURSION; i++)
+        {
+			if (!IsVisibleFromCamera((i == 0) ? _playerCamera : _portalCamera))
+			{
+				break;
+			}
+
+            localToWorldMat = transform.localToWorldMatrix * _linkedPortal.transform.worldToLocalMatrix * localToWorldMat;
+            camerasTransform.Add(localToWorldMat);
+
+            _portalCamera.transform.SetPositionAndRotation(localToWorldMat.GetColumn(3), localToWorldMat.rotation);
+        }
     }
 
     //////////////////////////////////////////////////////////////////////
